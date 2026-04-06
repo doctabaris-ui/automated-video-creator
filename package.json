@@ -13,6 +13,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@googleapis/youtube": "^31.0.0",
     "axios": "^1.14.0",
     "cors": "^2.8.6",

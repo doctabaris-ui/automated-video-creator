@@ -5,6 +5,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 // We'll import the youtube upload function next
 import { uploadVideoToYouTube, oauth2Client } from './youtube-uploader';
 
@@ -145,6 +146,27 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(process.cwd(), 'public')));
+
+app.post('/api/write-script', async (req, res) => {
+  const { niche } = req.body;
+  if (!niche) return res.status(400).json({ error: "Missing niche" });
+  
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "mock-key") {
+    return res.status(500).json({ error: "Server missing Gemini API Key." });
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    const prompt = `Write a deep, suspenseful, and captivating documentary script about "${niche}". Make it extremely long and detailed, designed specifically to fill a 30-minute block when read aloud by Text-To-Speech. Do NOT include scene directions or actor notes, just give me the raw text the narrator will speak.`;
+    
+    const result = await model.generateContent(prompt);
+    res.json({ script: result.response.text() });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.get('/api/auth/youtube', (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
