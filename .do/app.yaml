@@ -4,7 +4,7 @@ services:
     github:
       branch: main
       deploy_on_push: true
-      repo: your-github-username/automated-video-creator-for-videos # Replace with your actual repo
+      repo: doctabaris-ui/automated-video-creator
     http_port: 3000
     instance_count: 1
     instance_size_slug: basic-xxs
