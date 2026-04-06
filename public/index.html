@@ -186,6 +186,96 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
+
+    .btn-youtube {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 14px;
+      background: #ff0000;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      margin-bottom: 24px;
+      text-decoration: none;
+      box-shadow: 0 4px 15px rgba(255, 0, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+    .btn-youtube:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(255, 0, 0, 0.5); }
+
+    .queue-container {
+      margin-top: 24px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .queue-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .queue-item:last-child { border-bottom: none; }
+    .status-badge {
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .status-pending { background: #f59e0b; color: white; }
+    .status-processing { background: var(--primary); color: white; animation: pulse 1.5s infinite; }
+    .status-completed { background: #10b981; color: white; }
+    .status-failed { background: #ef4444; color: white; }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+      backdrop-filter: blur(10px);
+    }
+    .modal-box {
+      background: #1a1a24;
+      border: 2px solid #ff007f;
+      padding: 30px;
+      border-radius: 20px;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(255, 0, 127, 0.3);
+    }
+    .modal-box h2 { margin-bottom: 15px; color: #ff007f; font-weight: 800; }
+    .modal-box p { color: #8892b0; margin-bottom: 25px; line-height: 1.5; }
+    .btn-topup {
+      display: inline-block;
+      background: linear-gradient(135deg, #ff007f, #ff6b6b);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 800;
+      transition: all 0.3s ease;
+    }
+    .btn-topup:hover { transform: scale(1.05); }
+    .close-modal {
+      display: block;
+      margin-top: 15px;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -198,6 +288,10 @@
 
     <h1>AI Video Creator</h1>
     <p class="subtitle">Generate & Publish directly to YouTube</p>
+
+    <a href="/api/auth/youtube" class="btn-youtube" id="youtube-login">
+      ▶ Connect YouTube Account
+    </a>
 
     <form id="creator-form">
       <div class="form-group">
@@ -219,9 +313,22 @@
       </div>
 
       <button type="submit" class="btn-create" id="btn-submit">
-        Generate & Upload
+        Add Script to Queue
       </button>
     </form>
+
+    <div class="queue-container" id="queue-box">
+      <!-- Queue items dynamically injected here -->
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="billing-modal">
+    <div class="modal-box">
+      <h2>API Credits Exhausted ⚠️</h2>
+      <p id="billing-message">Your ElevenLabs account has completely run out of voice credits and blocked the pipeline.</p>
+      <a href="https://elevenlabs.io/app/billing" target="_blank" class="btn-topup">Top Up Account Now</a>
+      <span class="close-modal" onclick="document.getElementById('billing-modal').style.display='none'">Dismiss</span>
+    </div>
   </div>
 
   <script>
@@ -233,40 +340,90 @@
 
     document.getElementById('creator-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      
       const niche = document.getElementById('niche').value;
       const script = document.getElementById('script').value;
       const duration = document.getElementById('duration').value;
-
-      document.getElementById('loading').style.display = 'flex';
-      document.getElementById('status-text').innerText = 'Starting Pipeline...';
+      
+      const submitBtn = document.getElementById('btn-submit');
+      submitBtn.innerText = 'Queuing...';
+      submitBtn.disabled = true;
 
       try {
-        const response = await fetch('http://localhost:3000/api/generate', {
+        const response = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ niche, script, durationInSeconds: parseInt(duration, 10) })
         });
-        
         const data = await response.json();
+        
         if (response.ok) {
-          document.getElementById('status-text').innerText = 'Success! Video generated and uploaded.';
-          setTimeout(() => {
-             document.getElementById('loading').style.display = 'none';
-             alert(`Video ready! Output URL: ${data.videoUrl}`);
-          }, 2000);
+          // Clear the form instantly so they can queue another
+          document.getElementById('niche').value = '';
+          document.getElementById('script').value = '';
+          submitBtn.innerText = 'Add Script to Queue';
+          submitBtn.disabled = false;
+          pollQueue(); // trigger update immediately
         } else {
-          throw new Error(data.error || 'Server error');
+          throw new Error(data.error);
         }
       } catch (err) {
-        document.getElementById('status-text').innerText = 'Error occurred.';
         alert('Failed: ' + err.message);
-        document.getElementById('loading').style.display = 'none';
+        submitBtn.innerText = 'Add Script to Queue';
+        submitBtn.disabled = false;
       }
     });
 
-    // We can also setup EventSource or WebSocket here for realtime status updates,
-    // but this basic async wait meets the "simple interface" requirement effectively.
+    // Smart Queue Poller
+    let pollingInterval = null;
+    
+    async function pollQueue() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        const queueBox = document.getElementById('queue-box');
+        
+        if (data.queue.length === 0) {
+          queueBox.innerHTML = '<div style="text-align:center;color:gray;padding:10px;">Queue is empty</div>';
+          return;
+        }
+
+        let pendingCount = 0;
+        queueBox.innerHTML = data.queue.map(job => {
+          let badgeColor = 'status-pending';
+          if (job.status === 'processing') { badgeColor = 'status-processing'; pendingCount++; }
+          else if (job.status === 'completed') badgeColor = 'status-completed';
+          else if (job.status === 'failed') badgeColor = 'status-failed';
+          
+          if (job.status === 'pending') pendingCount++;
+
+          // Billing Intercept
+          if (job.status === 'failed' && job.error && job.error.includes('Insufficient Credits')) {
+             document.getElementById('billing-modal').style.display = 'flex';
+          }
+
+          let msg = job.status === 'failed' ? `Error: ${job.error}` :
+                    job.status === 'completed' ? `<a href="${job.videoUrl}" style="color:var(--primary)" target="_blank">View Video</a>` : '';
+
+          return `<div class="queue-item">
+                    <span><strong>Niche:</strong> ${job.params.niche.substring(0,20)}...</span>
+                    <span>${msg} <span class="status-badge ${badgeColor}">${job.status}</span></span>
+                  </div>`;
+        }).reverse().join(''); // Show newest first
+
+        if (pendingCount > 0 && !pollingInterval) {
+           pollingInterval = setInterval(pollQueue, 3000);
+        } else if (pendingCount === 0 && pollingInterval) {
+           clearInterval(pollingInterval);
+           pollingInterval = null;
+        }
+
+      } catch (err) {
+        console.error("Queue poll failed");
+      }
+    }
+
+    // Start polling automatically if there are pending jobs server-side
+    pollQueue();
   </script>
 </body>
 </html>

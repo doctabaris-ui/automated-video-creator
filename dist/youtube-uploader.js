@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.oauth2Client = void 0;
 exports.uploadVideoToYouTube = uploadVideoToYouTube;
 const googleapis_1 = require("googleapis");
 // You will need to obtain these from the Google Cloud Console
@@ -7,24 +8,24 @@ const googleapis_1 = require("googleapis");
 const CLIENT_ID = process.env.YOUTUBE_CLIENT_ID || 'YOUR_CLIENT_ID';
 const CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET || 'YOUR_CLIENT_SECRET';
 const REDIRECT_URI = 'https://ai-video-creator-jyjql.ondigitalocean.app/oauth2callback';
-const oauth2Client = new googleapis_1.google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+exports.oauth2Client = new googleapis_1.google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
 // In a real application, you'd store the refresh token in a database or securely in the environment
 const refresh_token = process.env.YOUTUBE_REFRESH_TOKEN;
 if (refresh_token) {
-    oauth2Client.setCredentials({ refresh_token });
+    exports.oauth2Client.setCredentials({ refresh_token });
 }
 async function uploadVideoToYouTube(videoUrlOrPath, title, description) {
     if (!refresh_token) {
         console.warn("WARNING: Missing YOUTUBE_REFRESH_TOKEN in environment. Skipping YouTube upload.");
         console.log("To authenticate, please visit the OAuth flow URL and retrieve a token.");
-        const authUrl = oauth2Client.generateAuthUrl({
+        const authUrl = exports.oauth2Client.generateAuthUrl({
             access_type: 'offline',
             scope: ['https://www.googleapis.com/auth/youtube.upload']
         });
         console.log(`Authorize this app by visiting this url: ${authUrl}`);
         return null;
     }
-    const youtube = googleapis_1.google.youtube({ version: 'v3', auth: oauth2Client });
+    const youtube = googleapis_1.google.youtube({ version: 'v3', auth: exports.oauth2Client });
     console.log(`[YouTube] Preparing to upload video: ${title}`);
     try {
         // Note: If you have a URL, you'll need to stream download it first to a local temp file,

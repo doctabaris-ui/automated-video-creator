@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
 // We'll import the youtube upload function next
-import { uploadVideoToYouTube } from './youtube-uploader';
+import { uploadVideoToYouTube, oauth2Client } from './youtube-uploader';
 
 dotenv.config();
 
@@ -79,6 +79,10 @@ export class AIVideoPipeline {
       });
       return "https://my-s3-bucket/elevenlabs-generated-audio.mp3";
     } catch (error: any) {
+      if (error.response && (error.response.status === 401 || error.response.status === 402)) {
+        console.error("[ElevenLabs Error]: Insufficient Credits");
+        throw new Error("Insufficient Credits: ElevenLabs");
+      }
       console.error("[ElevenLabs Error]:", error.message);
       throw new Error("ElevenLabs connection failed.");
     }
@@ -100,32 +104,87 @@ export class AIVideoPipeline {
   }
 }
 
+export interface QueueJob {
+  id: string;
+  params: VideoJobParams;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error?: string;
+  videoUrl?: string;
+}
+
+const videoQueue: QueueJob[] = [];
+let isProcessingQueue = false;
+
+async function processQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+  
+  while (true) {
+    const job = videoQueue.find(j => j.status === 'pending');
+    if (!job) break;
+    job.status = 'processing';
+    console.log(`[Queue] Processing job: ${job.id}`);
+    
+    try {
+      const pipeline = new AIVideoPipeline({
+        leonardoApiKey: process.env.LEONARDO_API_KEY || "mock-key",
+        elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || "mock-key",
+      });
+      const videoUrl = await pipeline.orchestrateFullJob(job.params);
+      job.status = 'completed';
+      job.videoUrl = videoUrl;
+    } catch (error: any) {
+      job.status = 'failed';
+      job.error = error.message;
+    }
+  }
+  isProcessingQueue = false;
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.post('/api/generate', async (req: express.Request, res: express.Response) => {
+app.get('/api/auth/youtube', (req, res) => {
+  const authUrl = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/youtube.upload']
+  });
+  res.redirect(authUrl);
+});
+
+app.get('/oauth2callback', async (req, res) => {
+  const code = req.query.code as string;
+  try {
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+    process.env.YOUTUBE_REFRESH_TOKEN = tokens.refresh_token || process.env.YOUTUBE_REFRESH_TOKEN;
+    res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:20vh;">YouTube Channel Linked! 🎉<br><span style="font-size:16px;color:gray;">You may close this tab and return to the Video Creator.</span></h2>');
+  } catch (error) {
+    res.status(500).send("Authentication failed");
+  }
+});
+
+app.post('/api/generate', (req, res) => {
   const { niche, script, durationInSeconds } = req.body;
   if (!niche || !script || !durationInSeconds) {
-    return res.status(400).json({ error: "Missing required fields: niche, script, durationInSeconds" });
+    return res.status(400).json({ error: "Missing required fields" });
   }
 
-  try {
-    const pipeline = new AIVideoPipeline({
-      leonardoApiKey: process.env.LEONARDO_API_KEY || "mock-key",
-      elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || "mock-key",
-    });
+  const jobId = Date.now().toString();
+  videoQueue.push({ id: jobId, params: req.body, status: 'pending' });
+  
+  processQueue(); // Non-blocking trigger
+  
+  res.json({ success: true, jobId, message: "Job queued" });
+});
 
-    const videoUrl = await pipeline.orchestrateFullJob({ niche, script, durationInSeconds });
-    
-    res.json({ success: true, videoUrl });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
+app.get('/api/status', (req, res) => {
+  res.json({ queue: videoQueue });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Web UI running at http://localhost:${PORT}`);
+  console.log(`Web Backend running at http://localhost:${PORT}`);
 });

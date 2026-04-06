@@ -65,6 +65,10 @@ class AIVideoPipeline {
             return "https://my-s3-bucket/elevenlabs-generated-audio.mp3";
         }
         catch (error) {
+            if (error.response && (error.response.status === 401 || error.response.status === 402)) {
+                console.error("[ElevenLabs Error]: Insufficient Credits");
+                throw new Error("Insufficient Credits: ElevenLabs");
+            }
             console.error("[ElevenLabs Error]:", error.message);
             throw new Error("ElevenLabs connection failed.");
         }
@@ -81,28 +85,71 @@ class AIVideoPipeline {
     }
 }
 exports.AIVideoPipeline = AIVideoPipeline;
+const videoQueue = [];
+let isProcessingQueue = false;
+async function processQueue() {
+    if (isProcessingQueue)
+        return;
+    isProcessingQueue = true;
+    while (true) {
+        const job = videoQueue.find(j => j.status === 'pending');
+        if (!job)
+            break;
+        job.status = 'processing';
+        console.log(`[Queue] Processing job: ${job.id}`);
+        try {
+            const pipeline = new AIVideoPipeline({
+                leonardoApiKey: process.env.LEONARDO_API_KEY || "mock-key",
+                elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || "mock-key",
+            });
+            const videoUrl = await pipeline.orchestrateFullJob(job.params);
+            job.status = 'completed';
+            job.videoUrl = videoUrl;
+        }
+        catch (error) {
+            job.status = 'failed';
+            job.error = error.message;
+        }
+    }
+    isProcessingQueue = false;
+}
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 app.use(express_1.default.static(path_1.default.join(__dirname, 'public')));
-app.post('/api/generate', async (req, res) => {
-    const { niche, script, durationInSeconds } = req.body;
-    if (!niche || !script || !durationInSeconds) {
-        return res.status(400).json({ error: "Missing required fields: niche, script, durationInSeconds" });
-    }
+app.get('/api/auth/youtube', (req, res) => {
+    const authUrl = youtube_uploader_1.oauth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: ['https://www.googleapis.com/auth/youtube.upload']
+    });
+    res.redirect(authUrl);
+});
+app.get('/oauth2callback', async (req, res) => {
+    const code = req.query.code;
     try {
-        const pipeline = new AIVideoPipeline({
-            leonardoApiKey: process.env.LEONARDO_API_KEY || "mock-key",
-            elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || "mock-key",
-        });
-        const videoUrl = await pipeline.orchestrateFullJob({ niche, script, durationInSeconds });
-        res.json({ success: true, videoUrl });
+        const { tokens } = await youtube_uploader_1.oauth2Client.getToken(code);
+        youtube_uploader_1.oauth2Client.setCredentials(tokens);
+        process.env.YOUTUBE_REFRESH_TOKEN = tokens.refresh_token || process.env.YOUTUBE_REFRESH_TOKEN;
+        res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:20vh;">YouTube Channel Linked! 🎉<br><span style="font-size:16px;color:gray;">You may close this tab and return to the Video Creator.</span></h2>');
     }
     catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).send("Authentication failed");
     }
+});
+app.post('/api/generate', (req, res) => {
+    const { niche, script, durationInSeconds } = req.body;
+    if (!niche || !script || !durationInSeconds) {
+        return res.status(400).json({ error: "Missing required fields" });
+    }
+    const jobId = Date.now().toString();
+    videoQueue.push({ id: jobId, params: req.body, status: 'pending' });
+    processQueue(); // Non-blocking trigger
+    res.json({ success: true, jobId, message: "Job queued" });
+});
+app.get('/api/status', (req, res) => {
+    res.json({ queue: videoQueue });
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Web UI running at http://localhost:${PORT}`);
+    console.log(`Web Backend running at http://localhost:${PORT}`);
 });
