@@ -144,7 +144,7 @@ async function processQueue() {
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(process.cwd(), 'public')));
 
 app.get('/api/auth/youtube', (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
