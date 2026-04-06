@@ -6,7 +6,7 @@ import path from 'path';
 // https://console.cloud.google.com/apis/credentials
 const CLIENT_ID = process.env.YOUTUBE_CLIENT_ID || 'YOUR_CLIENT_ID';
 const CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET || 'YOUR_CLIENT_SECRET';
-const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
+const REDIRECT_URI = 'https://ai-video-creator-jyjql.ondigitalocean.app/oauth2callback';
 
 const oauth2Client = new google.auth.OAuth2(
   CLIENT_ID,
