@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automated Video Creator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #8a2be2;
+      --secondary: #ff007f;
+      --bg: #0a0a0f;
+      --surface: rgba(255, 255, 255, 0.03);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #ffffff;
+      --text-muted: #8892b0;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Outfit', sans-serif; }
+    
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(circle at 15% 50%, rgba(138, 43, 226, 0.15), transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(255, 0, 127, 0.15), transparent 25%);
+      overflow-x: hidden;
+    }
+
+    .glass-container {
+      background: var(--surface);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px;
+      width: 100%;
+      max-width: 600px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      position: relative;
+      z-index: 10;
+      animation: fadeIn 0.6s ease-out forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      background: linear-gradient(to right, #fff, #a0aec0);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+      letter-spacing: -1px;
+    }
+
+    p.subtitle {
+      text-align: center;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+      font-size: 1.1rem;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      letter-spacing: 0.5px;
+      color: #e2e8f0;
+    }
+
+    input, textarea {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      color: var(--text);
+      font-size: 1rem;
+      transition: all 0.3s ease;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.2);
+    }
+
+    .duration-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .duration-wrapper input {
+      flex: 1;
+    }
+
+    .duration-display {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-weight: 800;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    .btn-create {
+      width: 100%;
+      padding: 18px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.2rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(255, 0, 127, 0.3);
+      position: relative;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .btn-create:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(255, 0, 127, 0.5);
+    }
+
+    .btn-create:active {
+      transform: translateY(1px);
+    }
+
+    .loading-overlay {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10, 10, 15, 0.9);
+      border-radius: 24px;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 20;
+      backdrop-filter: blur(5px);
+    }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid var(--border);
+      border-top-color: var(--secondary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    #status-text {
+      color: var(--text);
+      font-weight: 600;
+      font-size: 1.1rem;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="glass-container">
+    <div class="loading-overlay" id="loading">
+      <div class="spinner"></div>
+      <div id="status-text">Pipeline Authenticating...</div>
+    </div>
+
+    <h1>AI Video Creator</h1>
+    <p class="subtitle">Generate & Publish directly to YouTube</p>
+
+    <form id="creator-form">
+      <div class="form-group">
+        <label for="niche">Target Niche / Topic</label>
+        <input type="text" id="niche" placeholder="e.g. Historical Mysteries, Stoicism" required>
+      </div>
+
+      <div class="form-group">
+        <label for="script">Script Content</label>
+        <textarea id="script" placeholder="Enter the exact script or bullet points for the AI to narrate..." required></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="duration">Video Duration (Seconds)</label>
+        <div class="duration-wrapper">
+          <input type="range" id="duration" min="60" max="3600" step="30" value="300">
+          <div class="duration-display" id="duration-val">300s</div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-create" id="btn-submit">
+        Generate & Upload
+      </button>
+    </form>
+  </div>
+
+  <script>
+    const durationInput = document.getElementById('duration');
+    const durationVal = document.getElementById('duration-val');
+    durationInput.addEventListener('input', (e) => {
+      durationVal.textContent = `${e.target.value}s`;
+    });
+
+    document.getElementById('creator-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const niche = document.getElementById('niche').value;
+      const script = document.getElementById('script').value;
+      const duration = document.getElementById('duration').value;
+
+      document.getElementById('loading').style.display = 'flex';
+      document.getElementById('status-text').innerText = 'Starting Pipeline...';
+
+      try {
+        const response = await fetch('http://localhost:3000/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ niche, script, durationInSeconds: parseInt(duration, 10) })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+          document.getElementById('status-text').innerText = 'Success! Video generated and uploaded.';
+          setTimeout(() => {
+             document.getElementById('loading').style.display = 'none';
+             alert(`Video ready! Output URL: ${data.videoUrl}`);
+          }, 2000);
+        } else {
+          throw new Error(data.error || 'Server error');
+        }
+      } catch (err) {
+        document.getElementById('status-text').innerText = 'Error occurred.';
+        alert('Failed: ' + err.message);
+        document.getElementById('loading').style.display = 'none';
+      }
+    });
+
+    // We can also setup EventSource or WebSocket here for realtime status updates,
+    // but this basic async wait meets the "simple interface" requirement effectively.
+  </script>
+</body>
+</html>
