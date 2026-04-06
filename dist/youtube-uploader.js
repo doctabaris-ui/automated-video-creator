@@ -6,7 +6,7 @@ const googleapis_1 = require("googleapis");
 // https://console.cloud.google.com/apis/credentials
 const CLIENT_ID = process.env.YOUTUBE_CLIENT_ID || 'YOUR_CLIENT_ID';
 const CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET || 'YOUR_CLIENT_SECRET';
-const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
+const REDIRECT_URI = 'https://ai-video-creator-jyjql.ondigitalocean.app/oauth2callback';
 const oauth2Client = new googleapis_1.google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
 // In a real application, you'd store the refresh token in a database or securely in the environment
 const refresh_token = process.env.YOUTUBE_REFRESH_TOKEN;
