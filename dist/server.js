@@ -9,8 +9,10 @@ const cors_1 = __importDefault(require("cors"));
 const path_1 = __importDefault(require("path"));
 const axios_1 = __importDefault(require("axios"));
 const dotenv_1 = __importDefault(require("dotenv"));
+const fs_1 = __importDefault(require("fs"));
 const fluent_ffmpeg_1 = __importDefault(require("fluent-ffmpeg"));
 const generative_ai_1 = require("@google/generative-ai");
+const googleapis_1 = require("googleapis");
 // We'll import the youtube upload function next
 const youtube_uploader_1 = require("./youtube-uploader");
 dotenv_1.default.config();
@@ -74,14 +76,39 @@ class AIVideoPipeline {
             throw new Error("ElevenLabs connection failed.");
         }
     }
+    async uploadToGoogleDrive(videoPath, fileName) {
+        console.log(`[Google Drive] Uploading compiled final video from internal pipeline...`);
+        const drive = googleapis_1.google.drive({ version: 'v3', auth: youtube_uploader_1.oauth2Client });
+        try {
+            const response = await drive.files.create({
+                requestBody: {
+                    name: fileName,
+                    mimeType: 'video/mp4',
+                },
+                media: {
+                    mimeType: 'video/mp4',
+                    body: fs_1.default.createReadStream(videoPath)
+                }
+            });
+            console.log(`[Google Drive] Successfully saved video to cloud storage! File ID: ${response.data.id}`);
+            return `https://drive.google.com/file/d/${response.data.id}/view`;
+        }
+        catch (e) {
+            console.error("[Google Drive Error]:", e.message);
+            return "Drive Upload Failed";
+        }
+    }
     async orchestrateFullJob(params) {
         console.log(`Starting Video Pipeline for niche: ${params.niche} (${params.durationInSeconds}s)`);
         const voiceUrl = await this.generateElevenLabsVoiceover(params.script);
         const imagesUrl = await this.generateImageWithLeonardo(params.niche);
         // Call our internal FFmpeg compiler directly on our server hardware
         const finalVideoPath = await this.assembleWithFFmpeg(imagesUrl, voiceUrl, params.durationInSeconds);
+        const title = `New Video: ${params.niche}`;
+        // Upload to Google Drive directly from FFmpeg output
+        await this.uploadToGoogleDrive(finalVideoPath, `${title}.mp4`);
         // In the future, we will call YouTube upload here:
-        await (0, youtube_uploader_1.uploadVideoToYouTube)(finalVideoPath, `New Video: ${params.niche}`, params.script);
+        await (0, youtube_uploader_1.uploadVideoToYouTube)(finalVideoPath, title, params.script);
         return "https://youtu.be/mock-id-123"; // Return standard link to UI
     }
 }
@@ -139,7 +166,10 @@ app.post('/api/write-script', async (req, res) => {
 app.get('/api/auth/youtube', (req, res) => {
     const authUrl = youtube_uploader_1.oauth2Client.generateAuthUrl({
         access_type: 'offline',
-        scope: ['https://www.googleapis.com/auth/youtube.upload']
+        scope: [
+            'https://www.googleapis.com/auth/youtube.upload',
+            'https://www.googleapis.com/auth/drive.file'
+        ]
     });
     res.redirect(authUrl);
 });
@@ -149,7 +179,7 @@ app.get('/oauth2callback', async (req, res) => {
         const { tokens } = await youtube_uploader_1.oauth2Client.getToken(code);
         youtube_uploader_1.oauth2Client.setCredentials(tokens);
         process.env.YOUTUBE_REFRESH_TOKEN = tokens.refresh_token || process.env.YOUTUBE_REFRESH_TOKEN;
-        res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:20vh;">YouTube Channel Linked! 🎉<br><span style="font-size:16px;color:gray;">You may close this tab and return to the Video Creator.</span></h2>');
+        res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:20vh;">Cloud Connected! 🎉<br><span style="font-size:16px;color:gray;">YouTube and Google Drive linked successfully. You may close this tab.</span></h2>');
     }
     catch (error) {
         res.status(500).send("Authentication failed");

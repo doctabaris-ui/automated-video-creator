@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { google } from 'googleapis';
 // We'll import the youtube upload function next
 import { uploadVideoToYouTube, oauth2Client } from './youtube-uploader';
 
@@ -89,6 +90,29 @@ export class AIVideoPipeline {
     }
   }
 
+  async uploadToGoogleDrive(videoPath: string, fileName: string): Promise<string> {
+    console.log(`[Google Drive] Uploading compiled final video from internal pipeline...`);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    
+    try {
+      const response = await drive.files.create({
+        requestBody: {
+          name: fileName,
+          mimeType: 'video/mp4',
+        },
+        media: {
+          mimeType: 'video/mp4',
+          body: fs.createReadStream(videoPath)
+        }
+      });
+      console.log(`[Google Drive] Successfully saved video to cloud storage! File ID: ${response.data.id}`);
+      return `https://drive.google.com/file/d/${response.data.id}/view`;
+    } catch (e: any) {
+      console.error("[Google Drive Error]:", e.message);
+      return "Drive Upload Failed";
+    }
+  }
+
   async orchestrateFullJob(params: VideoJobParams): Promise<string> {
     console.log(`Starting Video Pipeline for niche: ${params.niche} (${params.durationInSeconds}s)`);
     
@@ -98,8 +122,13 @@ export class AIVideoPipeline {
     // Call our internal FFmpeg compiler directly on our server hardware
     const finalVideoPath = await this.assembleWithFFmpeg(imagesUrl!, voiceUrl!, params.durationInSeconds);
     
+    const title = `New Video: ${params.niche}`;
+
+    // Upload to Google Drive directly from FFmpeg output
+    await this.uploadToGoogleDrive(finalVideoPath, `${title}.mp4`);
+
     // In the future, we will call YouTube upload here:
-    await uploadVideoToYouTube(finalVideoPath, `New Video: ${params.niche}`, params.script);
+    await uploadVideoToYouTube(finalVideoPath, title, params.script);
 
     return "https://youtu.be/mock-id-123"; // Return standard link to UI
   }
@@ -171,7 +200,10 @@ app.post('/api/write-script', async (req, res) => {
 app.get('/api/auth/youtube', (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/youtube.upload']
+    scope: [
+      'https://www.googleapis.com/auth/youtube.upload',
+      'https://www.googleapis.com/auth/drive.file'
+    ]
   });
   res.redirect(authUrl);
 });
@@ -182,7 +214,7 @@ app.get('/oauth2callback', async (req, res) => {
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
     process.env.YOUTUBE_REFRESH_TOKEN = tokens.refresh_token || process.env.YOUTUBE_REFRESH_TOKEN;
-    res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:20vh;">YouTube Channel Linked! 🎉<br><span style="font-size:16px;color:gray;">You may close this tab and return to the Video Creator.</span></h2>');
+    res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:20vh;">Cloud Connected! 🎉<br><span style="font-size:16px;color:gray;">YouTube and Google Drive linked successfully. You may close this tab.</span></h2>');
   } catch (error) {
     res.status(500).send("Authentication failed");
   }
